@@ -42,9 +42,15 @@ export class ProfilesService {
       });
     }
     if (filters.country_id) {
-      queryBuilder.andWhere('profile.country_id = :country_id', {
-        country_id: filters.country_id.toUpperCase(),
-      });
+      if (filters.country_id.length > 2) {
+        queryBuilder.andWhere('LOWER(profile.country_name) = LOWER(:country_name)', {
+          country_name: filters.country_id,
+        });
+      } else {
+        queryBuilder.andWhere('profile.country_id = :country_id', {
+          country_id: filters.country_id.toUpperCase(),
+        });
+      }
     }
     if (filters.min_age !== undefined) {
       queryBuilder.andWhere('profile.age >= :min_age', {

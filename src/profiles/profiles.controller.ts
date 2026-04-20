@@ -1,4 +1,5 @@
 import { Controller, Get, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { ApiQuery, ApiOperation } from '@nestjs/swagger';
 import { ProfilesService, ProfileFilters, PaginationAndSort } from './profiles.service';
 
 @Controller('api/profiles')
@@ -6,6 +7,18 @@ export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
 
   @Get()
+  @ApiOperation({ summary: 'Get all profiles comprehensively' })
+  @ApiQuery({ name: 'gender', required: false, type: String })
+  @ApiQuery({ name: 'age_group', required: false, type: String, description: 'child, teenager, adult, senior' })
+  @ApiQuery({ name: 'country_id', required: false, type: String, description: 'ISO code e.g., NG' })
+  @ApiQuery({ name: 'min_age', required: false, type: String })
+  @ApiQuery({ name: 'max_age', required: false, type: String })
+  @ApiQuery({ name: 'min_gender_probability', required: false, type: String })
+  @ApiQuery({ name: 'min_country_probability', required: false, type: String })
+  @ApiQuery({ name: 'sort_by', required: false, enum: ['age', 'created_at', 'gender_probability'] })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: true, type: String, example: '1' })
+  @ApiQuery({ name: 'limit', required: true, type: String, example: '10' })
   async getProfiles(
     @Query('gender') gender?: string,
     @Query('age_group') age_group?: string,
@@ -62,6 +75,10 @@ export class ProfilesController {
   }
 
   @Get('search')
+  @ApiOperation({ summary: 'Search profiles using Natural Language Querying' })
+  @ApiQuery({ name: 'q', required: true, type: String, example: 'young males from nigeria' })
+  @ApiQuery({ name: 'page', required: true, type: String, example: '1' })
+  @ApiQuery({ name: 'limit', required: true, type: String, example: '10' })
   async searchProfiles(
     @Query('q') q?: string,
     @Query('page') page?: string,
