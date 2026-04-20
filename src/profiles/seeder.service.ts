@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { Profile } from './profile.entity';
 import * as fs from 'fs';
 import * as path from 'path';
-import { v7 as uuidv7 } from 'uuid';
 
 @Injectable()
 export class SeederService {
@@ -30,8 +29,8 @@ export class SeederService {
         const parsed = JSON.parse(rawData);
         const items = Array.isArray(parsed) ? parsed : parsed.profiles || [];
         
-        // For idempotency, checking one by one or insert ignore isn't natively supported nicely in generic typeorm without driver specifics,
-        // but since we checked `count === 0` we should be safe to bulk insert, or save chunk by chunk.
+        const { v7: uuidv7 } = await eval(`import('uuid')`);
+        
         const mappedItems = items.map(item => ({
           ...item,
           id: uuidv7(),
