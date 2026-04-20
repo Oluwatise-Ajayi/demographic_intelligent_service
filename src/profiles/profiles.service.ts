@@ -174,49 +174,17 @@ export class ProfilesService {
       matchedSomething = true;
     }
 
-    // COUNTRY (simplified manual dictionary for common names/ISO mapping)
-    const countryMap: Record<string, string> = {
-      'nigeria': 'NG',
-      'angola': 'AO',
-      'kenya': 'KE',
-      'united states': 'US',
-      'uk': 'GB',
-      'united kingdom': 'GB',
-      'canada': 'CA',
-      'australia': 'AU',
-      'south africa': 'ZA',
-      'ghana': 'GH',
-      'benin': 'BJ',
-      'togo': 'TG',
-      'egypt': 'EG',
-      'france': 'FR',
-      'germany': 'DE',
-      'india': 'IN',
-      'china': 'CN',
-      'brazil': 'BR'
-    };
-
-    const fromMatch = lowerQ.match(/from\s+([a-z\s]+)/);
-    let potentialCountry = '';
+    // COUNTRY
+    // We already augmented applyFilters to automatically lookup full country names 
+    // if the provided country_id is longer than 2 characters (e.g. "algeria").
+    // We extract whatever text follows "from " (ignoring subsequent age modifiers)
+    const fromMatch = lowerQ.match(/from\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger).*)?$/);
     if (fromMatch) {
-      potentialCountry = fromMatch[1].trim();
-      // attempt to match largest substring first or just check the map
-      for (const [countryName, isoCode] of Object.entries(countryMap)) {
-        if (potentialCountry.includes(countryName)) {
-          filters.country_id = isoCode;
-          matchedSomething = true;
-          break;
-        }
+      const parsedCountry = fromMatch[1].trim();
+      if (parsedCountry) {
+        filters.country_id = parsedCountry; // applyFilters will automatically use ILIKE/LOWER for > 2 chars!
+        matchedSomething = true;
       }
-    } else {
-        // try finding country name directly
-        for (const [countryName, isoCode] of Object.entries(countryMap)) {
-            if (lowerQ.includes(countryName)) {
-              filters.country_id = isoCode;
-              matchedSomething = true;
-              break;
-            }
-          }
     }
 
     if (!matchedSomething) {
