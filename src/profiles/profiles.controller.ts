@@ -1,10 +1,27 @@
-import { Controller, Get, Query, HttpException, HttpStatus } from '@nestjs/common';
-import { ApiQuery, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { ApiQuery, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { ProfilesService, ProfileFilters, PaginationAndSort } from './profiles.service';
 
 @Controller('api/profiles')
 export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
+
+  @Post()
+  @Post('seed')
+  @ApiOperation({ summary: 'Create new profiles (seed)' })
+  @ApiBody({ type: Object, isArray: true, description: 'Profile or array of profiles to create' })
+  async createProfiles(@Body() data: any) {
+    try {
+      const created = await this.profilesService.createProfiles(data);
+      return {
+        status: 'success',
+        message: 'Profiles created successfully',
+        data: created,
+      };
+    } catch (e: any) {
+      throw new HttpException({ status: 'error', message: e.message || 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get all profiles comprehensively' })

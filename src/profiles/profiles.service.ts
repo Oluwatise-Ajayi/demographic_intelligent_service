@@ -76,6 +76,23 @@ export class ProfilesService {
     }
   }
 
+  async createProfiles(data: any | any[]) {
+    const items = Array.isArray(data) ? data : [data];
+    const { v7: uuidv7 } = await eval(`import('uuid')`);
+    
+    const mappedItems = items.map((item) => {
+      // Create a shallow copy
+      const copy = { ...item };
+      // Assign an id if missing
+      if (!copy.id) {
+        copy.id = uuidv7();
+      }
+      return copy;
+    });
+
+    return await this.profileRepository.save(mappedItems, { chunk: 100 });
+  }
+
   async findAll(filters: ProfileFilters, pagination: PaginationAndSort) {
     const page = pagination.page || 1;
     const limit = Math.min(pagination.limit || 10, 50);
@@ -99,6 +116,7 @@ export class ProfilesService {
       page,
       limit,
       total,
+      totalPages: Math.ceil(total / limit),
       data,
     };
   }
