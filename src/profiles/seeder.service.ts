@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Profile } from './profile.entity';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,28 +22,40 @@ export class SeederService {
       return;
     }
 
-    // Try reading seed data if provided
-    const seedFilePath = path.join(process.cwd(), 'data.json');
-    if (fs.existsSync(seedFilePath)) {
+    // Try multiple possible locations for data.json
+    const possiblePaths = [
+      path.join(process.cwd(), 'data.json'),
+      path.join(__dirname, '..', '..', 'data.json'),
+      '/var/task/data.json',
+      '/var/task/src/data.json',
+    ];
+
+    let seedFilePath: string | null = null;
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        seedFilePath = p;
+        break;
+      }
+    }
+
+    if (seedFilePath) {
       try {
         const rawData = fs.readFileSync(seedFilePath, 'utf8');
         const parsed = JSON.parse(rawData);
         const items = Array.isArray(parsed) ? parsed : parsed.profiles || [];
         
-        const { v7: uuidv7 } = await eval(`import('uuid')`);
-        
         const mappedItems = items.map(item => ({
           ...item,
-          id: uuidv7(),
+          id: item.id || randomUUID(),
         }));
         
         await this.profileRepository.save(mappedItems, { chunk: 100 });
-        this.logger.log(`Successfully seeded ${mappedItems.length} records from data.json`);
+        this.logger.log(`Successfully seeded ${mappedItems.length} records from ${seedFilePath}`);
       } catch (e) {
         this.logger.error(`Failed to seed data: ${e.message}`);
       }
     } else {
-      this.logger.warn('Seed data file not found at "data.json". Please provide it.');
+      this.logger.warn('Seed data file not found in any known location.');
     }
   }
 }

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Profile } from './profile.entity';
+import { randomUUID } from 'crypto';
 
 export interface ProfileFilters {
   gender?: string;
@@ -78,14 +79,11 @@ export class ProfilesService {
 
   async createProfiles(data: any | any[]) {
     const items = Array.isArray(data) ? data : [data];
-    const { v7: uuidv7 } = await eval(`import('uuid')`);
-    
+
     const mappedItems = items.map((item) => {
-      // Create a shallow copy
       const copy = { ...item };
-      // Assign an id if missing
       if (!copy.id) {
-        copy.id = uuidv7();
+        copy.id = randomUUID();
       }
       return copy;
     });
@@ -93,9 +91,13 @@ export class ProfilesService {
     return await this.profileRepository.save(mappedItems, { chunk: 100 });
   }
 
+  async deleteAll() {
+    await this.profileRepository.clear();
+  }
+
   async findAll(filters: ProfileFilters, pagination: PaginationAndSort) {
     const page = pagination.page || 1;
-    const limit = Math.min(pagination.limit || 10, 50);
+    const limit = Math.min(pagination.limit || 10, 100);
     const skip = (page - 1) * limit;
     
     // Default sorts
@@ -131,29 +133,13 @@ export class ProfilesService {
 
     let matchedSomething = false;
 
-    // GENDER
-    if (lowerQ.includes('male') && !lowerQ.includes('female')) {
-      filters.gender = 'male';
-      matchedSomething = true;
-    } else if (lowerQ.match(/\b(men|boy|boys)\b/)) {
-      filters.gender = 'male';
-      matchedSomething = true;
-    } else if (
-      (lowerQ.includes('female') && !lowerQ.match(/\bmale\b/)) ||
-      lowerQ.match(/\b(women|girl|girls)\b/)
-    ) {
-      // Note: "female" contains "male", handled carefully
+    // GENDER — use word boundaries to cleanly separate male/female/males/females
+    if (/\bfemales?\b/.test(lowerQ) || /\b(women|woman|girl|girls)\b/.test(lowerQ)) {
       filters.gender = 'female';
       matchedSomething = true;
-    } else if (lowerQ.match(/\bfemales\b/) && !lowerQ.match(/\bmales\b/)) {
-      filters.gender = 'female';
+    } else if (/\bmales?\b/.test(lowerQ) || /\b(men|man|boy|boys)\b/.test(lowerQ)) {
+      filters.gender = 'male';
       matchedSomething = true;
-    } else if (lowerQ.match(/\bfemale\b/) && !lowerQ.match(/\b(?<!fe)male\b/)) {
-        filters.gender = 'female';
-        matchedSomething = true;
-    } else if (lowerQ.match(/\b(?<!fe)male\b/) && !lowerQ.match(/\bfemale\b/)) {
-        filters.gender = 'male';
-        matchedSomething = true;
     }
 
     // AGE GROUPS & KEYWORDS
@@ -162,19 +148,19 @@ export class ProfilesService {
       filters.max_age = 24;
       matchedSomething = true;
     }
-    if (lowerQ.includes('teenager') || lowerQ.includes('teenagers')) {
+    if (/\bteenagers?\b/.test(lowerQ)) {
       filters.age_group = 'teenager';
       matchedSomething = true;
     }
-    if (lowerQ.includes('adult') || lowerQ.includes('adults')) {
+    if (/\badults?\b/.test(lowerQ)) {
       filters.age_group = 'adult';
       matchedSomething = true;
     }
-    if (lowerQ.includes('child') || lowerQ.includes('children')) {
+    if (/\b(child|children)\b/.test(lowerQ)) {
       filters.age_group = 'child';
       matchedSomething = true;
     }
-    if (lowerQ.includes('senior') || lowerQ.includes('seniors')) {
+    if (/\bseniors?\b/.test(lowerQ) || /\b(elderly|old)\b/.test(lowerQ)) {
       filters.age_group = 'senior';
       matchedSomething = true;
     }
@@ -192,16 +178,33 @@ export class ProfilesService {
       matchedSomething = true;
     }
 
+    // Between pattern: "between X and Y"
+    const betweenMatch = lowerQ.match(/between\s+(\d+)\s+and\s+(\d+)/);
+    if (betweenMatch) {
+      filters.min_age = parseInt(betweenMatch[1], 10);
+      filters.max_age = parseInt(betweenMatch[2], 10);
+      matchedSomething = true;
+    }
+
     // COUNTRY
-    // We already augmented applyFilters to automatically lookup full country names 
-    // if the provided country_id is longer than 2 characters (e.g. "algeria").
-    // We extract whatever text follows "from " (ignoring subsequent age modifiers)
-    const fromMatch = lowerQ.match(/from\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger).*)?$/);
+    const fromMatch = lowerQ.match(/from\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger|between).*)?$/);
     if (fromMatch) {
       const parsedCountry = fromMatch[1].trim();
       if (parsedCountry) {
-        filters.country_id = parsedCountry; // applyFilters will automatically use ILIKE/LOWER for > 2 chars!
+        filters.country_id = parsedCountry;
         matchedSomething = true;
+      }
+    }
+
+    // Also detect "in <country>" pattern
+    if (!filters.country_id) {
+      const inMatch = lowerQ.match(/\bin\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger|between).*)?$/);
+      if (inMatch) {
+        const parsedCountry = inMatch[1].trim();
+        if (parsedCountry) {
+          filters.country_id = parsedCountry;
+          matchedSomething = true;
+        }
       }
     }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiQuery, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { ProfilesService, ProfileFilters, PaginationAndSort } from './profiles.service';
 
@@ -7,9 +7,8 @@ export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
 
   @Post()
-  @Post('seed')
   @ApiOperation({ summary: 'Create new profiles (seed)' })
-  @ApiBody({ type: Object, isArray: true, description: 'Profile or array of profiles to create' })
+  @ApiBody({ description: 'Profile or array of profiles to create' })
   async createProfiles(@Body() data: any) {
     try {
       const created = await this.profilesService.createProfiles(data);
@@ -19,7 +18,24 @@ export class ProfilesController {
         data: created,
       };
     } catch (e: any) {
-      throw new HttpException({ status: 'error', message: e.message || 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        { status: 'error', message: e.message || 'Server failure' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Delete()
+  @ApiOperation({ summary: 'Delete all profiles' })
+  async deleteAllProfiles() {
+    try {
+      await this.profilesService.deleteAll();
+      return { status: 'success', message: 'All profiles deleted' };
+    } catch (e: any) {
+      throw new HttpException(
+        { status: 'error', message: e.message || 'Server failure' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -34,8 +50,8 @@ export class ProfilesController {
   @ApiQuery({ name: 'min_country_probability', required: false, type: String })
   @ApiQuery({ name: 'sort_by', required: false, enum: ['age', 'created_at', 'gender_probability'] })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
-  @ApiQuery({ name: 'page', required: true, type: String, example: '1' })
-  @ApiQuery({ name: 'limit', required: true, type: String, example: '10' })
+  @ApiQuery({ name: 'page', required: false, type: String, example: '1' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '10' })
   async getProfiles(
     @Query('gender') gender?: string,
     @Query('age_group') age_group?: string,
@@ -94,8 +110,8 @@ export class ProfilesController {
   @Get('search')
   @ApiOperation({ summary: 'Search profiles using Natural Language Querying' })
   @ApiQuery({ name: 'q', required: true, type: String, example: 'young males from nigeria' })
-  @ApiQuery({ name: 'page', required: true, type: String, example: '1' })
-  @ApiQuery({ name: 'limit', required: true, type: String, example: '10' })
+  @ApiQuery({ name: 'page', required: false, type: String, example: '1' })
+  @ApiQuery({ name: 'limit', required: false, type: String, example: '10' })
   async searchProfiles(
     @Query('q') q?: string,
     @Query('page') page?: string,
@@ -104,7 +120,7 @@ export class ProfilesController {
     if (!q || String(q).trim() === '') {
       throw new HttpException(
         { status: 'error', message: 'Unable to interpret query' },
-        HttpStatus.BAD_REQUEST, // Or 400
+        HttpStatus.BAD_REQUEST,
       );
     }
 
