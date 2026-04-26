@@ -21,6 +21,30 @@ export interface PaginationAndSort {
   order?: 'asc' | 'desc';
 }
 
+// Helper to determine age_group from age
+function getAgeGroup(age: number): string {
+  if (age < 13) return 'child';
+  if (age < 20) return 'teenager';
+  if (age < 60) return 'adult';
+  return 'senior';
+}
+
+// Country code to name mapping
+const COUNTRY_MAP: Record<string, string> = {
+  AF: 'Afghanistan', AL: 'Albania', DZ: 'Algeria', AD: 'Andorra', AO: 'Angola',
+  AR: 'Argentina', AU: 'Australia', AT: 'Austria', BD: 'Bangladesh', BE: 'Belgium',
+  BR: 'Brazil', CA: 'Canada', CL: 'Chile', CN: 'China', CO: 'Colombia',
+  EG: 'Egypt', ET: 'Ethiopia', FI: 'Finland', FR: 'France', DE: 'Germany',
+  GH: 'Ghana', GR: 'Greece', IN: 'India', ID: 'Indonesia', IE: 'Ireland',
+  IL: 'Israel', IT: 'Italy', JP: 'Japan', KE: 'Kenya', MY: 'Malaysia',
+  MX: 'Mexico', NL: 'Netherlands', NZ: 'New Zealand', NG: 'Nigeria', NO: 'Norway',
+  PK: 'Pakistan', PH: 'Philippines', PL: 'Poland', PT: 'Portugal', RO: 'Romania',
+  RU: 'Russia', SA: 'Saudi Arabia', SG: 'Singapore', ZA: 'South Africa',
+  KR: 'South Korea', ES: 'Spain', SE: 'Sweden', CH: 'Switzerland', TH: 'Thailand',
+  TR: 'Turkey', UA: 'Ukraine', AE: 'United Arab Emirates', GB: 'United Kingdom',
+  US: 'United States', VN: 'Vietnam',
+};
+
 @Injectable()
 export class ProfilesService {
   constructor(
@@ -77,6 +101,35 @@ export class ProfilesService {
     }
   }
 
+  // Build pagination links
+  private buildLinks(
+    basePath: string,
+    page: number,
+    limit: number,
+    totalPages: number,
+    extraParams?: Record<string, string>,
+  ) {
+    const buildUrl = (p: number) => {
+      const params = new URLSearchParams();
+      params.set('page', String(p));
+      params.set('limit', String(limit));
+      if (extraParams) {
+        for (const [key, val] of Object.entries(extraParams)) {
+          if (val !== undefined && val !== '') {
+            params.set(key, val);
+          }
+        }
+      }
+      return `${basePath}?${params.toString()}`;
+    };
+
+    return {
+      self: buildUrl(page),
+      next: page < totalPages ? buildUrl(page + 1) : null,
+      prev: page > 1 ? buildUrl(page - 1) : null,
+    };
+  }
+
   async createProfiles(data: any | any[]) {
     const items = Array.isArray(data) ? data : [data];
 
@@ -95,7 +148,16 @@ export class ProfilesService {
     await this.profileRepository.clear();
   }
 
-  async findAll(filters: ProfileFilters, pagination: PaginationAndSort) {
+  async findById(id: string): Promise<Profile | null> {
+    return this.profileRepository.findOne({ where: { id } });
+  }
+
+  async findAll(
+    filters: ProfileFilters,
+    pagination: PaginationAndSort,
+    basePath: string = '/api/profiles',
+    extraParams?: Record<string, string>,
+  ) {
     const page = pagination.page || 1;
     const limit = Math.min(pagination.limit || 10, 100);
     const skip = (page - 1) * limit;
@@ -112,15 +174,98 @@ export class ProfilesService {
     queryBuilder.skip(skip).take(limit);
 
     const [data, total] = await queryBuilder.getManyAndCount();
+    const totalPages = Math.ceil(total / limit) || 1;
 
     return {
       status: 'success',
       page,
       limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      total_pages: totalPages,
+      links: this.buildLinks(basePath, page, limit, totalPages, extraParams),
       data,
     };
+  }
+
+  // Create a profile by calling external APIs (Stage 1 logic)
+  async createProfileFromName(name: string): Promise<Profile> {
+    // Call Genderize API
+    const genderRes = await fetch(`https://api.genderize.io?name=${encodeURIComponent(name.split(' ')[0])}`);
+    const genderData = await genderRes.json();
+
+    // Call Agify API
+    const ageRes = await fetch(`https://api.agify.io?name=${encodeURIComponent(name.split(' ')[0])}`);
+    const ageData = await ageRes.json();
+
+    // Call Nationalize API
+    const nationRes = await fetch(`https://api.nationalize.io?name=${encodeURIComponent(name.split(' ')[0])}`);
+    const nationData = await nationRes.json();
+
+    const gender = genderData.gender || 'unknown';
+    const genderProbability = genderData.probability || 0;
+    const age = ageData.age || 0;
+    const ageGroup = getAgeGroup(age);
+
+    // Get the most likely country
+    const topCountry = nationData.country?.[0] || {};
+    const countryId = topCountry.country_id || 'XX';
+    const countryProbability = topCountry.probability || 0;
+    const countryName = COUNTRY_MAP[countryId] || countryId;
+
+    const profile = this.profileRepository.create({
+      id: randomUUID(),
+      name,
+      gender,
+      gender_probability: genderProbability,
+      age,
+      age_group: ageGroup,
+      country_id: countryId,
+      country_name: countryName,
+      country_probability: countryProbability,
+    });
+
+    return await this.profileRepository.save(profile);
+  }
+
+  // Export profiles as CSV
+  async exportCSV(
+    filters: ProfileFilters,
+    sortConfig?: { sort_by?: string; order?: string },
+  ): Promise<string> {
+    const sortBy = sortConfig?.sort_by || 'created_at';
+    const order = (sortConfig?.order || 'desc').toUpperCase() as 'ASC' | 'DESC';
+
+    const queryBuilder = this.profileRepository.createQueryBuilder('profile');
+    this.applyFilters(queryBuilder, filters);
+    queryBuilder.orderBy(`profile.${sortBy}`, order);
+
+    const profiles = await queryBuilder.getMany();
+
+    // Build CSV manually
+    const headers = [
+      'id', 'name', 'gender', 'gender_probability', 'age',
+      'age_group', 'country_id', 'country_name', 'country_probability', 'created_at',
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    for (const p of profiles) {
+      const row = [
+        p.id,
+        `"${(p.name || '').replace(/"/g, '""')}"`,
+        p.gender,
+        p.gender_probability,
+        p.age,
+        p.age_group,
+        p.country_id,
+        `"${(p.country_name || '').replace(/"/g, '""')}"`,
+        p.country_probability,
+        p.created_at,
+      ];
+      csvRows.push(row.join(','));
+    }
+
+    return csvRows.join('\n');
   }
 
   parseNaturalLanguage(q: string): ProfileFilters {
