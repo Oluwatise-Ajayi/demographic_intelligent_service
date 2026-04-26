@@ -353,6 +353,27 @@ export class ProfilesService {
       }
     }
 
+    // Standalone country code or demonym fallback
+    if (!filters.country_id) {
+      if (/\b(nigeria|nigerians?|ng)\b/.test(lowerQ)) { filters.country_id = 'NG'; matchedSomething = true; }
+      else if (/\b(united states|americans?|usa?)\b/.test(lowerQ)) { filters.country_id = 'US'; matchedSomething = true; }
+      else if (/\b(united kingdom|british|uk|gb)\b/.test(lowerQ)) { filters.country_id = 'GB'; matchedSomething = true; }
+      else if (/\b(ghana|ghanaians?|gh)\b/.test(lowerQ)) { filters.country_id = 'GH'; matchedSomething = true; }
+      else if (/\b(kenya|kenyans?|ke)\b/.test(lowerQ)) { filters.country_id = 'KE'; matchedSomething = true; }
+      else if (/\b(south africa|south africans?|za)\b/.test(lowerQ)) { filters.country_id = 'ZA'; matchedSomething = true; }
+      else if (/\b(india|indians?|in)\b/.test(lowerQ)) { filters.country_id = 'IN'; matchedSomething = true; }
+      else {
+        // Dynamic fallback loop against the COUNTRY_MAP
+        for (const [code, name] of Object.entries(COUNTRY_MAP)) {
+          if (new RegExp(`\\b${name.toLowerCase()}\\b`).test(lowerQ) || new RegExp(`\\b${code.toLowerCase()}\\b`).test(lowerQ)) {
+            filters.country_id = code;
+            matchedSomething = true;
+            break;
+          }
+        }
+      }
+    }
+
     if (!matchedSomething) {
       throw new BadRequestException('Unable to interpret query');
     }
