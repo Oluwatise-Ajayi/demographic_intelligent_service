@@ -49,6 +49,21 @@ The parsing works by looking for specific keywords and regex patterns in the use
 
 ---
 
+## Command Line Interface (CLI)
+
+This platform includes a globally installable CLI tool that integrates directly with this backend API.
+You can find the CLI source code and instructions in the `../insighta-cli` directory.
+
+To install it:
+```bash
+cd ../insighta-cli
+npm install
+npm link
+insighta --help
+```
+
+---
+
 ## Local Development Setup
 
 1. Rename `.env.example` to `.env` (or create a `.env` file) and fill in the values:
