@@ -124,7 +124,7 @@ export class AuthController {
       res.cookie('access_token', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 180 * 1000, // 3 minutes
         path: '/',
       });
@@ -132,7 +132,7 @@ export class AuthController {
       res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 300 * 1000, // 5 minutes
         path: '/',
       });
@@ -142,7 +142,7 @@ export class AuthController {
       res.cookie('csrf_token', csrfToken, {
         httpOnly: false, // readable by JS for inclusion in requests
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 300 * 1000,
         path: '/',
       });
@@ -186,7 +186,7 @@ export class AuthController {
         res.cookie('access_token', tokens.access_token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           maxAge: 180 * 1000,
           path: '/',
         });
@@ -194,7 +194,7 @@ export class AuthController {
         res.cookie('refresh_token', tokens.refresh_token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           maxAge: 300 * 1000,
           path: '/',
         });
@@ -203,7 +203,7 @@ export class AuthController {
         res.cookie('csrf_token', csrfToken, {
           httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           maxAge: 300 * 1000,
           path: '/',
         });
