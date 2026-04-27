@@ -46,13 +46,16 @@ export class AuthService {
     let user = await this.userRepository.findOne({ where: { github_id: githubId } });
 
     if (!user) {
+      const userCount = await this.userRepository.count();
+      const assignedRole = userCount === 0 ? 'admin' : 'analyst';
+
       user = this.userRepository.create({
         id: generateUUIDv7(),
         github_id: githubId,
         username: githubProfile.username || githubProfile.login,
         email: githubProfile.emails?.[0]?.value || githubProfile.email || '',
         avatar_url: githubProfile.photos?.[0]?.value || githubProfile._json?.avatar_url || '',
-        role: 'analyst',
+        role: assignedRole,
         is_active: true,
       });
       user = await this.userRepository.save(user);
