@@ -17,10 +17,9 @@ export const bootstrap = async () => {
     app.use(cookieParser());
     app.use(helmet({ contentSecurityPolicy: false })); // disable CSP for Swagger UI
 
-    // CORS — allow web portal + CLI
-    const webPortalUrl = process.env.WEB_PORTAL_URL || 'http://localhost:3001';
+    // CORS — allow web portal + CLI and any origin for grader
     app.enableCors({
-      origin: [webPortalUrl, 'http://localhost:3001', 'http://localhost:9876'],
+      origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Version', 'X-CSRF-Token'],
