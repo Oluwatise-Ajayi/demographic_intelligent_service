@@ -11,6 +11,8 @@ let cachedServer: express.Express;
 export const bootstrap = async () => {
   if (!cachedServer) {
     const expressApp = express();
+    expressApp.use(express.json());
+    expressApp.use(express.urlencoded({ extended: true }));
     const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
     
     // Security middleware

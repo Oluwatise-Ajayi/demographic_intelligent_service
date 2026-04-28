@@ -22,7 +22,7 @@ import type { Request, Response } from 'express';
 @ApiTags('Profiles')
 @ApiBearerAuth()
 @Controller('api/profiles')
-@UseGuards(JwtAuthGuard, RolesGuard, ApiVersionGuard)
+@UseGuards(ApiVersionGuard, JwtAuthGuard, RolesGuard)
 @ApiHeader({ name: 'X-API-Version', required: true, description: 'API version (must be 1)' })
 export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
