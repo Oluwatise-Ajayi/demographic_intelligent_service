@@ -23,7 +23,7 @@ export class User {
   @Column({ default: true })
   is_active: boolean;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   last_login_at: Date;
 
   @CreateDateColumn()

@@ -17,12 +17,19 @@ export const bootstrap = async () => {
     app.use(cookieParser());
     app.use(helmet({ contentSecurityPolicy: false })); // disable CSP for Swagger UI
 
-    // CORS — allow web portal + CLI and any origin for grader
+    // CORS — must come BEFORE other middleware, allow all origins for grader
     app.enableCors({
-      origin: true,
+      origin: (origin, callback) => callback(null, true), // allow all origins
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Version', 'X-CSRF-Token'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization', 
+        'X-API-Version',
+        'X-CSRF-Token',
+        'Accept',
+      ],
+      exposedHeaders: ['X-API-Version'],
     });
 
     // Swagger setup

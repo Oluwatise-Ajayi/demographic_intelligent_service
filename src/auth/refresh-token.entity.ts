@@ -11,7 +11,7 @@ export class RefreshToken {
   @Column({ unique: true })
   token_hash: string;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: 'timestamp' })
   expires_at: Date;
 
   @Column({ default: false })

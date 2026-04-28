@@ -11,12 +11,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { ConfigModule } from '@nestjs/config';
-import * as path from 'path';
-
-// Vercel serverless functions have a read-only filesystem except for /tmp.
-// So if we are running in production on Vercel, we MUST use /tmp as the SQLite DB path.
-const isVercel = process.env.VERCEL === '1';
-const dbPath = isVercel ? '/tmp/database.sqlite' : path.join(process.cwd(), 'database.sqlite');
 
 @Module({
   imports: [
@@ -24,10 +18,13 @@ const dbPath = isVercel ? '/tmp/database.sqlite' : path.join(process.cwd(), 'dat
       isGlobal: true,
     }),
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: dbPath,
+      type: 'postgres',
+      url: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false,
+      },
       entities: [Profile, User, RefreshToken],
-      synchronize: true, // Will auto create schema. Very useful on Vercel cold starts.
+      synchronize: true, // Will auto create schema
     }),
     ThrottlerModule.forRoot([
       {
