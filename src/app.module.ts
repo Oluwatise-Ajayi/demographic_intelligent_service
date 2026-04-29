@@ -36,13 +36,18 @@ class CustomThrottlerGuard extends ThrottlerGuard {
         rejectUnauthorized: false,
       },
       entities: [Profile, User, RefreshToken],
-      synchronize: true, // Will auto create schema
+      synchronize: true,
     }),
     ThrottlerModule.forRoot([
       {
-        name: 'default',
-        ttl: 60000, // 60 seconds
-        limit: 60,  // 60 requests per minute (general)
+        name: 'short',
+        ttl: 60000,
+        limit: 10,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 60,
       },
     ]),
     AuthModule,

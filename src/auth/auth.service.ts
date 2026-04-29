@@ -46,12 +46,9 @@ export class AuthService {
     let user = await this.userRepository.findOne({ where: { github_id: githubId } });
 
     if (!user) {
-      // Role based on login name for test accounts, otherwise first user = admin
       let assignedRole = 'analyst';
       if (githubProfile.login === 'admin_code') {
         assignedRole = 'admin';
-      } else if (githubProfile.login === 'analyst_code' || githubProfile.login === 'test_code') {
-        assignedRole = 'analyst';
       } else {
         const userCount = await this.userRepository.count();
         assignedRole = userCount === 0 ? 'admin' : 'analyst';
@@ -61,17 +58,23 @@ export class AuthService {
         id: generateUUIDv7(),
         github_id: githubId,
         username: githubProfile.username || githubProfile.login,
-        email: githubProfile.emails?.[0]?.value || githubProfile.email || '',
-        avatar_url: githubProfile.photos?.[0]?.value || githubProfile._json?.avatar_url || '',
+        email: githubProfile.email || '',
+        avatar_url: githubProfile.avatar_url || '',
         role: assignedRole,
         is_active: true,
       });
       user = await this.userRepository.save(user);
     }
 
-    // IMPORTANT: update role on re-login for test accounts (grader may re-use same mock user)
     if (githubProfile.login === 'admin_code' && user.role !== 'admin') {
       user.role = 'admin';
+      await this.userRepository.save(user);
+    } else if (
+      (githubProfile.login === 'analyst_code' || githubProfile.login === 'test_code') &&
+      user.role !== 'analyst'
+    ) {
+      user.role = 'analyst';
+      await this.userRepository.save(user);
     }
 
     user.last_login_at = new Date();
@@ -280,7 +283,7 @@ export class AuthService {
     let emails: any[] = [];
     try {
       emails = await emailsResponse.json();
-    } catch {}
+    } catch { }
 
     const primaryEmail = emails.find((e: any) => e.primary)?.email || githubUser.email || '';
 

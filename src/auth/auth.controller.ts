@@ -32,9 +32,9 @@ setInterval(() => {
 
 @ApiTags('Auth')
 @Controller('auth')
-@Throttle({ default: { limit: 10, ttl: 60000 } })
+@Throttle({ short: { limit: 10, ttl: 60000 }, long: { limit: 10, ttl: 60000 } })
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Get('github')
   @ApiOperation({ summary: 'Initiate GitHub OAuth with PKCE' })
@@ -78,7 +78,7 @@ export class AuthController {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Version, X-CSRF-Token, Accept');
     res.header('Access-Control-Allow-Credentials', 'true');
 
-    return res.redirect(githubAuthUrl.toString());
+    return res.status(302).setHeader('Location', githubAuthUrl.toString()).end();
   }
 
   @Get('github/callback')
@@ -488,7 +488,7 @@ export class AuthController {
 @Controller('api/users')
 @SkipThrottle()
 export class UsersController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Get('me')
   @ApiOperation({ summary: 'Get current authenticated user' })
