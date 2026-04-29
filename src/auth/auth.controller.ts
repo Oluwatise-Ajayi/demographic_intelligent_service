@@ -44,6 +44,7 @@ export class AuthController {
     @Query('redirect_uri') redirectUri: string,
     @Query('source') source: string,
     @Res() res: Response,
+    @Req() req: Request,
   ) {
     const clientId = process.env.GITHUB_CLIENT_ID || 'dummy_client_id';
 
@@ -69,9 +70,12 @@ export class AuthController {
     githubAuthUrl.searchParams.set('code_challenge', codeChallenge);
     githubAuthUrl.searchParams.set('code_challenge_method', 'S256');
 
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Ensure CORS headers are present on redirect responses
+    const origin = req.headers.origin || '*';
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Version, X-CSRF-Token, Accept');
+    res.header('Access-Control-Allow-Credentials', 'true');
 
     return res.redirect(githubAuthUrl.toString());
   }
@@ -134,14 +138,17 @@ export class AuthController {
       const user = await this.authService.findOrCreateUser(githubProfile);
 
       if (!user.is_active) {
-        throw new HttpException('Account is deactivated', HttpStatus.FORBIDDEN);
+        throw new HttpException(
+          { status: 'error', message: 'Account is deactivated' },
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       // Generate tokens
       const accessToken = this.authService.generateAccessToken(user);
       const refreshToken = await this.authService.generateRefreshToken(user);
 
-      // Set HTTP-only cookies (for web portal)
+      // Set HTTP-only cookies (for web portal) - ALL must be HttpOnly
       res.cookie('access_token', accessToken, {
         httpOnly: true,
         secure: true,
@@ -158,9 +165,10 @@ export class AuthController {
         path: '/',
       });
 
+      // csrf_token must also be HttpOnly for security
       const csrfToken = crypto.randomBytes(32).toString('hex');
       res.cookie('csrf_token', csrfToken, {
-        httpOnly: false,
+        httpOnly: true,
         secure: true,
         sameSite: 'none',
         maxAge: 300 * 1000,
@@ -239,7 +247,7 @@ export class AuthController {
 
         const csrfToken = crypto.randomBytes(32).toString('hex');
         res.cookie('csrf_token', csrfToken, {
-          httpOnly: false,
+          httpOnly: true,
           secure: true,
           sameSite: 'none',
           maxAge: 300 * 1000,
@@ -282,6 +290,16 @@ export class AuthController {
     return res.json({ status: 'success', message: 'Logged out successfully' });
   }
 
+  // Reject GET requests to /auth/logout with proper error
+  @Get('logout')
+  @SkipThrottle()
+  logoutGet(@Res() res: Response) {
+    return res.status(405).json({
+      status: 'error',
+      message: 'Method not allowed. Use POST /auth/logout',
+    });
+  }
+
   @Get('me')
   @SkipThrottle()
   @ApiOperation({ summary: 'Get current authenticated user' })
@@ -299,7 +317,10 @@ export class AuthController {
     }
 
     if (!token) {
-      throw new UnauthorizedException('Authentication required');
+      throw new HttpException(
+        { status: 'error', message: 'Authentication required' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     try {
@@ -307,26 +328,35 @@ export class AuthController {
       const user = await this.authService.getUserById(payload.sub);
 
       if (!user) {
-        throw new UnauthorizedException('User not found');
+        throw new HttpException(
+          { status: 'error', message: 'User not found' },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
 
       if (!user.is_active) {
-        throw new HttpException('Account is deactivated', HttpStatus.FORBIDDEN);
+        throw new HttpException(
+          { status: 'error', message: 'Account is deactivated' },
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       return {
         status: 'success',
         data: {
           id: user.id,
+          github_id: user.github_id,
           username: user.username,
           email: user.email,
           avatar_url: user.avatar_url,
           role: user.role,
+          is_active: user.is_active,
           last_login_at: user.last_login_at,
           created_at: user.created_at,
         },
       };
     } catch (e: any) {
+      if (e.status) throw e;
       throw new HttpException(
         { status: 'error', message: e.message || 'Invalid token' },
         e.status || HttpStatus.UNAUTHORIZED,
@@ -357,7 +387,10 @@ export class UsersController {
     }
 
     if (!token) {
-      throw new UnauthorizedException('Authentication required');
+      throw new HttpException(
+        { status: 'error', message: 'Authentication required' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     try {
@@ -365,26 +398,35 @@ export class UsersController {
       const user = await this.authService.getUserById(payload.sub);
 
       if (!user) {
-        throw new UnauthorizedException('User not found');
+        throw new HttpException(
+          { status: 'error', message: 'User not found' },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
 
       if (!user.is_active) {
-        throw new HttpException('Account is deactivated', HttpStatus.FORBIDDEN);
+        throw new HttpException(
+          { status: 'error', message: 'Account is deactivated' },
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       return {
         status: 'success',
         data: {
           id: user.id,
+          github_id: user.github_id,
           username: user.username,
           email: user.email,
           avatar_url: user.avatar_url,
           role: user.role,
+          is_active: user.is_active,
           last_login_at: user.last_login_at,
           created_at: user.created_at,
         },
       };
     } catch (e: any) {
+      if (e.status) throw e;
       throw new HttpException(
         { status: 'error', message: e.message || 'Invalid token' },
         e.status || HttpStatus.UNAUTHORIZED,

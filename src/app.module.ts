@@ -11,6 +11,18 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { ConfigModule } from '@nestjs/config';
+import { HttpException, HttpStatus, Injectable, ExecutionContext } from '@nestjs/common';
+
+// Custom ThrottlerGuard to return proper error format
+@Injectable()
+class CustomThrottlerGuard extends ThrottlerGuard {
+  protected throwThrottlingException(context: ExecutionContext): Promise<void> {
+    throw new HttpException(
+      { status: 'error', message: 'Too Many Requests' },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+}
 
 @Module({
   imports: [
@@ -41,7 +53,7 @@ import { ConfigModule } from '@nestjs/config';
     AppService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: CustomThrottlerGuard,
     },
   ],
 })

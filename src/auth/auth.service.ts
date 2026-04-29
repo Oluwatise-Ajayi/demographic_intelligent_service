@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
 import { User } from './user.entity';
@@ -113,14 +113,24 @@ export class AuthService {
     try {
       const payload = jwt.verify(token, this.jwtSecret) as any;
       if (payload.type !== 'access') {
-        throw new UnauthorizedException('Invalid token type');
+        throw new HttpException(
+          { status: 'error', message: 'Invalid token type' },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
       return payload;
     } catch (e: any) {
+      if (e instanceof HttpException) throw e;
       if (e.name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Token expired');
+        throw new HttpException(
+          { status: 'error', message: 'Token expired' },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
-      throw new UnauthorizedException('Invalid token');
+      throw new HttpException(
+        { status: 'error', message: 'Invalid token' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
   }
 
@@ -132,13 +142,19 @@ export class AuthService {
     });
 
     if (!storedToken) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new HttpException(
+        { status: 'error', message: 'Invalid refresh token' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     if (new Date() > storedToken.expires_at) {
       storedToken.is_revoked = true;
       await this.refreshTokenRepository.save(storedToken);
-      throw new UnauthorizedException('Refresh token expired');
+      throw new HttpException(
+        { status: 'error', message: 'Refresh token expired' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     // Invalidate old refresh token immediately (rotation)
@@ -147,11 +163,17 @@ export class AuthService {
 
     const user = await this.userRepository.findOne({ where: { id: storedToken.user_id } });
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new HttpException(
+        { status: 'error', message: 'User not found' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     if (!user.is_active) {
-      throw new ForbiddenException('Account is deactivated');
+      throw new HttpException(
+        { status: 'error', message: 'Account is deactivated' },
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     const accessToken = this.generateAccessToken(user);

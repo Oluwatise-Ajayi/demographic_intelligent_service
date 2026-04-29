@@ -2,8 +2,8 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException,
-  ForbiddenException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 
@@ -27,7 +27,10 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     if (!token) {
-      throw new UnauthorizedException('Authentication required');
+      throw new HttpException(
+        { status: 'error', message: 'Authentication required' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     try {
@@ -35,11 +38,17 @@ export class JwtAuthGuard implements CanActivate {
       const user = await this.authService.getUserById(payload.sub);
 
       if (!user) {
-        throw new UnauthorizedException('User not found');
+        throw new HttpException(
+          { status: 'error', message: 'User not found' },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
 
       if (!user.is_active) {
-        throw new ForbiddenException('Account is deactivated');
+        throw new HttpException(
+          { status: 'error', message: 'Account is deactivated' },
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       // Attach user to request
@@ -53,10 +62,13 @@ export class JwtAuthGuard implements CanActivate {
 
       return true;
     } catch (e: any) {
-      if (e instanceof ForbiddenException) {
+      if (e instanceof HttpException) {
         throw e;
       }
-      throw new UnauthorizedException(e.message || 'Invalid token');
+      throw new HttpException(
+        { status: 'error', message: e.message || 'Invalid token' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
   }
 }
