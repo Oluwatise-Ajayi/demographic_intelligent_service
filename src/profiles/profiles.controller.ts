@@ -11,9 +11,19 @@ import {
   UseGuards,
   Req,
   Res,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomUUID } from 'crypto';
+import * as path from 'path';
+import * as fs from 'fs';
 import { ApiQuery, ApiOperation, ApiBody, ApiHeader, ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
-import { ProfilesService, ProfileFilters, PaginationAndSort } from './profiles.service';
+import { ProfilesService } from './profiles.service';
+import { QueryParserService } from './query-parser.service';
+import { CsvIngestionService } from './csv-ingestion.service';
+import { ProfileFilters, PaginationAndSort } from './profiles.types';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { ApiVersionGuard } from '../guards/api-version.guard';
@@ -25,7 +35,11 @@ import type { Request, Response } from 'express';
 @UseGuards(ApiVersionGuard, JwtAuthGuard, RolesGuard)
 @ApiHeader({ name: 'X-API-Version', required: true, description: 'API version (must be 1)' })
 export class ProfilesController {
-  constructor(private readonly profilesService: ProfilesService) {}
+  constructor(
+    private readonly profilesService: ProfilesService,
+    private readonly queryParserService: QueryParserService,
+    private readonly csvIngestionService: CsvIngestionService,
+  ) {}
 
   @Post()
   @Roles('admin')
@@ -52,6 +66,55 @@ export class ProfilesController {
       throw new HttpException(
         { status: 'error', message: e.message || 'Server failure' },
         e.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('upload')
+  @Roles('admin', 'analyst')
+  @ApiOperation({ summary: 'Upload profiles via CSV' })
+  @ApiResponse({ status: 201, description: 'CSV processing results.' })
+  @ApiResponse({ status: 400, description: 'No file provided.' })
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = './uploads';
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        cb(null, `${randomUUID()}${path.extname(file.originalname)}`);
+      }
+    }),
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype !== 'text/csv' && !file.originalname.endsWith('.csv')) {
+        return cb(
+          new HttpException(
+            { status: 'error', message: 'Only CSV files are allowed' },
+            HttpStatus.BAD_REQUEST,
+          ),
+          false,
+        );
+      }
+      cb(null, true);
+    }
+  }))
+  async uploadCSV(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new HttpException(
+        { status: 'error', message: 'No file provided' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      return await this.csvIngestionService.processCSV(file.path);
+    } catch (e: any) {
+      throw new HttpException(
+        { status: 'error', message: e.message || 'Upload processing failed' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -95,7 +158,7 @@ export class ProfilesController {
     }
 
     try {
-      const filters = this.profilesService.parseNaturalLanguage(String(q));
+      const filters = this.queryParserService.parseNaturalLanguage(String(q));
 
       const pagination: PaginationAndSort = {};
       const p = page ? Number(page) : 1;

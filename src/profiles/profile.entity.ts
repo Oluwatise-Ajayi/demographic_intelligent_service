@@ -1,6 +1,7 @@
-import { Entity, Column, PrimaryColumn, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
 
 @Entity('profiles')
+@Index(['country_id', 'gender', 'age_group'])
 export class Profile {
   @PrimaryColumn('uuid')
   id: string;
@@ -9,18 +10,22 @@ export class Profile {
   name: string;
 
   @Column()
+  @Index()
   gender: string;
 
   @Column('float')
   gender_probability: number;
 
   @Column('int')
+  @Index()
   age: number;
 
   @Column()
+  @Index()
   age_group: string;
 
   @Column({ length: 2 })
+  @Index()
   country_id: string;
 
   @Column()
@@ -30,5 +35,6 @@ export class Profile {
   country_probability: number;
 
   @CreateDateColumn()
+  @Index()
   created_at: Date;
 }

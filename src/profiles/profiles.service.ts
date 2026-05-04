@@ -1,55 +1,19 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Profile } from './profile.entity';
 import { randomUUID } from 'crypto';
-
-export interface ProfileFilters {
-  gender?: string;
-  age_group?: string;
-  country_id?: string;
-  min_age?: number;
-  max_age?: number;
-  min_gender_probability?: number;
-  min_country_probability?: number;
-}
-
-export interface PaginationAndSort {
-  page?: number;
-  limit?: number;
-  sort_by?: 'age' | 'created_at' | 'gender_probability';
-  order?: 'asc' | 'desc';
-}
-
-// Helper to determine age_group from age
-function getAgeGroup(age: number): string {
-  if (age < 13) return 'child';
-  if (age < 20) return 'teenager';
-  if (age < 60) return 'adult';
-  return 'senior';
-}
-
-// Country code to name mapping
-const COUNTRY_MAP: Record<string, string> = {
-  AF: 'Afghanistan', AL: 'Albania', DZ: 'Algeria', AD: 'Andorra', AO: 'Angola',
-  AR: 'Argentina', AU: 'Australia', AT: 'Austria', BD: 'Bangladesh', BE: 'Belgium',
-  BR: 'Brazil', CA: 'Canada', CL: 'Chile', CN: 'China', CO: 'Colombia',
-  EG: 'Egypt', ET: 'Ethiopia', FI: 'Finland', FR: 'France', DE: 'Germany',
-  GH: 'Ghana', GR: 'Greece', IN: 'India', ID: 'Indonesia', IE: 'Ireland',
-  IL: 'Israel', IT: 'Italy', JP: 'Japan', KE: 'Kenya', MY: 'Malaysia',
-  MX: 'Mexico', NL: 'Netherlands', NZ: 'New Zealand', NG: 'Nigeria', NO: 'Norway',
-  PK: 'Pakistan', PH: 'Philippines', PL: 'Poland', PT: 'Portugal', RO: 'Romania',
-  RU: 'Russia', SA: 'Saudi Arabia', SG: 'Singapore', ZA: 'South Africa',
-  KR: 'South Korea', ES: 'Spain', SE: 'Sweden', CH: 'Switzerland', TH: 'Thailand',
-  TR: 'Turkey', UA: 'Ukraine', AE: 'United Arab Emirates', GB: 'United Kingdom',
-  US: 'United States', VN: 'Vietnam',
-};
+import { ProfileFilters, PaginationAndSort } from './profiles.types';
+import { getAgeGroup, COUNTRY_MAP } from './profiles.constants';
 
 @Injectable()
 export class ProfilesService {
   constructor(
     @InjectRepository(Profile)
     private readonly profileRepository: Repository<Profile>,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   private applyFilters(
@@ -149,7 +113,34 @@ export class ProfilesService {
   }
 
   async findById(id: string): Promise<Profile | null> {
-    return this.profileRepository.findOne({ where: { id } });
+    const cacheKey = `profile:id:${id}`;
+    const cached = await this.cacheManager.get<Profile>(cacheKey);
+    if (cached) return cached;
+    const profile = await this.profileRepository.findOne({ where: { id } });
+    if (profile) await this.cacheManager.set(cacheKey, profile, 300000); // 5 minutes
+    return profile;
+  }
+
+  private normalizeFilters(filters: ProfileFilters): string {
+    const sortedKeys = Object.keys(filters).sort();
+    const normalizedObj: any = {};
+    for (const key of sortedKeys) {
+      const val = filters[key as keyof ProfileFilters];
+      if (val !== undefined && val !== null && val !== '') {
+        // Lowercase string filters to ensure equivalent queries resolve to the same cache key
+        normalizedObj[key] = typeof val === 'string' ? val.toLowerCase() : val;
+      }
+    }
+    return JSON.stringify(normalizedObj);
+  }
+
+  private getCacheKey(filters: ProfileFilters, pagination: PaginationAndSort): string {
+    const filtersKey = this.normalizeFilters(filters);
+    const page = pagination.page || 1;
+    const limit = Math.min(pagination.limit || 10, 100);
+    const sortBy = (pagination.sort_by || 'created_at').toLowerCase();
+    const order = (pagination.order || 'desc').toLowerCase();
+    return `profiles:${filtersKey}:${page}:${limit}:${sortBy}:${order}`;
   }
 
   async findAll(
@@ -158,6 +149,11 @@ export class ProfilesService {
     basePath: string = '/api/profiles',
     extraParams?: Record<string, string>,
   ) {
+    const cacheKey = this.getCacheKey(filters, pagination);
+    const cachedResult = await this.cacheManager.get(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
     const page = pagination.page || 1;
     const limit = Math.min(pagination.limit || 10, 100);
     const skip = (page - 1) * limit;
@@ -176,7 +172,7 @@ export class ProfilesService {
     const [data, total] = await queryBuilder.getManyAndCount();
     const totalPages = Math.ceil(total / limit) || 1;
 
-    return {
+    const result = {
       status: 'success',
       page,
       limit,
@@ -185,6 +181,10 @@ export class ProfilesService {
       links: this.buildLinks(basePath, page, limit, totalPages, extraParams),
       data,
     };
+
+    await this.cacheManager.set(cacheKey, result, 300000); // 5 minutes
+
+    return result;
   }
 
   // Create a profile by calling external APIs (Stage 1 logic)
@@ -266,118 +266,5 @@ export class ProfilesService {
     }
 
     return csvRows.join('\n');
-  }
-
-  parseNaturalLanguage(q: string): ProfileFilters {
-    if (!q || typeof q !== 'string') {
-      throw new BadRequestException('Unable to interpret query');
-    }
-
-    const lowerQ = q.toLowerCase();
-    const filters: ProfileFilters = {};
-
-    let matchedSomething = false;
-
-    // GENDER — use word boundaries to cleanly separate male/female/males/females
-    if (/\bfemales?\b/.test(lowerQ) || /\b(women|woman|girl|girls)\b/.test(lowerQ)) {
-      filters.gender = 'female';
-      matchedSomething = true;
-    } else if (/\bmales?\b/.test(lowerQ) || /\b(men|man|boy|boys)\b/.test(lowerQ)) {
-      filters.gender = 'male';
-      matchedSomething = true;
-    }
-
-    // AGE GROUPS & KEYWORDS
-    if (lowerQ.includes('young')) {
-      filters.min_age = 16;
-      filters.max_age = 24;
-      matchedSomething = true;
-    }
-    if (/\bteenagers?\b/.test(lowerQ)) {
-      filters.age_group = 'teenager';
-      matchedSomething = true;
-    }
-    if (/\badults?\b/.test(lowerQ)) {
-      filters.age_group = 'adult';
-      matchedSomething = true;
-    }
-    if (/\b(child|children)\b/.test(lowerQ)) {
-      filters.age_group = 'child';
-      matchedSomething = true;
-    }
-    if (/\bseniors?\b/.test(lowerQ) || /\b(elderly|old)\b/.test(lowerQ)) {
-      filters.age_group = 'senior';
-      matchedSomething = true;
-    }
-
-    // MIN / MAX AGE
-    const aboveMatch = lowerQ.match(/(?:above|over|older than|greater than)\s+(\d+)/);
-    if (aboveMatch) {
-      filters.min_age = parseInt(aboveMatch[1], 10);
-      matchedSomething = true;
-    }
-
-    const belowMatch = lowerQ.match(/(?:below|under|younger than|less than)\s+(\d+)/);
-    if (belowMatch) {
-      filters.max_age = parseInt(belowMatch[1], 10);
-      matchedSomething = true;
-    }
-
-    // Between pattern: "between X and Y"
-    const betweenMatch = lowerQ.match(/between\s+(\d+)\s+and\s+(\d+)/);
-    if (betweenMatch) {
-      filters.min_age = parseInt(betweenMatch[1], 10);
-      filters.max_age = parseInt(betweenMatch[2], 10);
-      matchedSomething = true;
-    }
-
-    // COUNTRY
-    const fromMatch = lowerQ.match(/from\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger|between).*)?$/);
-    if (fromMatch) {
-      const parsedCountry = fromMatch[1].trim();
-      if (parsedCountry) {
-        filters.country_id = parsedCountry;
-        matchedSomething = true;
-      }
-    }
-
-    // Also detect "in <country>" pattern
-    if (!filters.country_id) {
-      const inMatch = lowerQ.match(/\bin\s+([a-z\s]+?)(\s+(above|below|under|over|older|younger|between).*)?$/);
-      if (inMatch) {
-        const parsedCountry = inMatch[1].trim();
-        if (parsedCountry) {
-          filters.country_id = parsedCountry;
-          matchedSomething = true;
-        }
-      }
-    }
-
-    // Standalone country code or demonym fallback
-    if (!filters.country_id) {
-      if (/\b(nigeria|nigerians?|ng)\b/.test(lowerQ)) { filters.country_id = 'NG'; matchedSomething = true; }
-      else if (/\b(united states|americans?|usa?)\b/.test(lowerQ)) { filters.country_id = 'US'; matchedSomething = true; }
-      else if (/\b(united kingdom|british|uk|gb)\b/.test(lowerQ)) { filters.country_id = 'GB'; matchedSomething = true; }
-      else if (/\b(ghana|ghanaians?|gh)\b/.test(lowerQ)) { filters.country_id = 'GH'; matchedSomething = true; }
-      else if (/\b(kenya|kenyans?|ke)\b/.test(lowerQ)) { filters.country_id = 'KE'; matchedSomething = true; }
-      else if (/\b(south africa|south africans?|za)\b/.test(lowerQ)) { filters.country_id = 'ZA'; matchedSomething = true; }
-      else if (/\b(india|indians?|in)\b/.test(lowerQ)) { filters.country_id = 'IN'; matchedSomething = true; }
-      else {
-        // Dynamic fallback loop against the COUNTRY_MAP
-        for (const [code, name] of Object.entries(COUNTRY_MAP)) {
-          if (new RegExp(`\\b${name.toLowerCase()}\\b`).test(lowerQ) || new RegExp(`\\b${code.toLowerCase()}\\b`).test(lowerQ)) {
-            filters.country_id = code;
-            matchedSomething = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!matchedSomething) {
-      throw new BadRequestException('Unable to interpret query');
-    }
-
-    return filters;
   }
 }

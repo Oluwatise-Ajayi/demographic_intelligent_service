@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -26,6 +27,10 @@ class CustomThrottlerGuard extends ThrottlerGuard {
 
 @Module({
   imports: [
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 300000, // 5 minutes default TTL
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
