@@ -37,9 +37,7 @@ class CustomThrottlerGuard extends ThrottlerGuard {
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
       entities: [Profile, User, RefreshToken],
       synchronize: true,
     }),

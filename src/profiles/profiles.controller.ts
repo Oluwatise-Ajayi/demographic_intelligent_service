@@ -19,7 +19,7 @@ import { diskStorage } from 'multer';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ApiQuery, ApiOperation, ApiBody, ApiHeader, ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { ApiQuery, ApiOperation, ApiBody, ApiHeader, ApiTags, ApiBearerAuth, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { ProfilesService } from './profiles.service';
 import { QueryParserService } from './query-parser.service';
 import { CsvIngestionService } from './csv-ingestion.service';
@@ -73,6 +73,19 @@ export class ProfilesController {
   @Post('upload')
   @Roles('admin', 'analyst')
   @ApiOperation({ summary: 'Upload profiles via CSV' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'CSV file containing profiles to upload',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 201, description: 'CSV processing results.' })
   @ApiResponse({ status: 400, description: 'No file provided.' })
   @UseInterceptors(FileInterceptor('file', {
